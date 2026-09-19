@@ -17,5 +17,17 @@ public record ParsedTxn(
         BigDecimal amount,
         String merchant,
         BigDecimal statedBalance,
-        String sourceMessageId) {
+        String sourceMessageId,
+        String reference) {
+
+    public ParsedTxn(
+            String accountLast4,
+            OffsetDateTime occurredAt,
+            Direction direction,
+            BigDecimal amount,
+            String merchant,
+            BigDecimal statedBalance,
+            String sourceMessageId) {
+        this(accountLast4, occurredAt, direction, amount, merchant, statedBalance, sourceMessageId, null);
+    }
 }

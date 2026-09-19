@@ -18,27 +18,32 @@ public final class Amounts {
     private static final Pattern AMOUNT =
             Pattern.compile("(?:Rs\\.?|INR)\\s*([0-9,]+(?:\\.[0-9]{1,2})?)", Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern BALANCE = Pattern.compile(
-            "(?:Avl\\s*Bal|Available\\s*Balance|BalAvl|Avl\\s*Limit)\\s*:?\\s*"
+    private static final Pattern STATED_BALANCE = Pattern.compile(
+            "(?:Avl\\s*Bal|Available\\s*Balance|BalAvl|Avl\\s*Balance)\\s*:?\\s*"
                     + "(?:Rs\\.?|INR)\\s*([0-9,]+(?:\\.[0-9]{1,2})?)",
             Pattern.CASE_INSENSITIVE);
 
-    /** The transaction amount: the first rupee figure in the message (excluding stated balance). */
+    private static final Pattern BALANCE_OR_LIMIT = Pattern.compile(
+            "(?:Avl\\s*Bal|Available\\s*Balance|BalAvl|Avl\\s*Balance|Avl\\s*Limit|Available\\s*Limit)\\s*:?\\s*"
+                    + "(?:Rs\\.?|INR)\\s*([0-9,]+(?:\\.[0-9]{1,2})?)",
+            Pattern.CASE_INSENSITIVE);
+
+    /** The transaction amount: the first rupee figure in the message (excluding stated balance/limit). */
     public static BigDecimal first(String body) {
         if (body == null) return null;
 
-        // Remove stated balance portion to avoid picking balance instead of transaction amount
-        String bodyWithoutBalance = BALANCE.matcher(body).replaceAll("");
+        // Remove stated balance/limit portion to avoid picking balance instead of transaction amount
+        String bodyWithoutBalance = BALANCE_OR_LIMIT.matcher(body).replaceAll("");
 
         Matcher m = AMOUNT.matcher(bodyWithoutBalance);
         if (!m.find()) return null;
         return toDecimal(m.group(1));
     }
 
-    /** The balance the bank quoted, if it quoted one. */
+    /** The balance the bank quoted, if it quoted an account balance (excluding credit limits). */
     public static BigDecimal statedBalance(String body) {
         if (body == null) return null;
-        Matcher m = BALANCE.matcher(body);
+        Matcher m = STATED_BALANCE.matcher(body);
         if (!m.find()) return null;
         return toDecimal(m.group(1));
     }

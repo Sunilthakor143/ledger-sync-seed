@@ -22,17 +22,36 @@ public final class Dates {
             DateTimeFormatter.ofPattern("dd-MM-yy HH:mm", Locale.ENGLISH),
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.ENGLISH),
             DateTimeFormatter.ofPattern("dd MMM yy HH:mm", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm", Locale.ENGLISH));
+            DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd-MMM-yy HH:mm", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd/MM/yy HH:mm", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm:ss", Locale.ENGLISH));
 
     /** Parse a local date-time written by a bank, as IST. */
     public static OffsetDateTime ist(String dateAndTime) {
+        if (dateAndTime == null || dateAndTime.isBlank()) return null;
+        String trimmed = dateAndTime.trim();
         for (DateTimeFormatter f : SMS_FORMATS) {
             try {
-                return LocalDateTime.parse(dateAndTime.trim(), f).atOffset(IST);
+                return LocalDateTime.parse(trimmed, f).atOffset(IST);
             } catch (DateTimeParseException ignored) {
                 // try the next shape
             }
         }
         return null;
+    }
+
+    /** Parse a date-time string, attempting RFC 1123 / ISO offset formats first, then IST bank formats. */
+    public static OffsetDateTime parse(String dateString) {
+        if (dateString == null || dateString.isBlank()) return null;
+        String trimmed = dateString.trim();
+        try {
+            return OffsetDateTime.parse(trimmed, DateTimeFormatter.RFC_1123_DATE_TIME);
+        } catch (DateTimeParseException ignored) {}
+        try {
+            return OffsetDateTime.parse(trimmed);
+        } catch (DateTimeParseException ignored) {}
+        return ist(trimmed);
     }
 }

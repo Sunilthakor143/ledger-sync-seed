@@ -39,12 +39,20 @@ public final class HdfcSmsParser implements MessageParser {
 
     @Override
     public boolean supports(RawMessage m) {
-        return "sms".equals(m.channel()) && SENDER.equals(m.sender());
+        return "sms".equals(m.channel()) && SENDER.equalsIgnoreCase(m.sender());
     }
 
     @Override
     public Optional<ParsedTxn> parse(RawMessage m) {
         String body = m.body();
+        if (body == null) return Optional.empty();
+
+        // Reject non-transactions (OTP, E-mandate, future deduction alerts, mandate verify)
+        if (body.contains("is your OTP") || body.contains("OTP for")
+                || body.startsWith("E-mandate") || body.contains("will be deducted")
+                || body.contains("MANDATE VERIFY")) {
+            return Optional.empty();
+        }
 
         Matcher v1 = V1.matcher(body);
         if (v1.find()) {
