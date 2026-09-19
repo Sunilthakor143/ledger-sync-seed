@@ -37,7 +37,7 @@ public final class SqlLedgerStore implements LedgerStore, AutoCloseable {
     public SqlLedgerStore(Path dbFile) {
         try {
             this.conn = DriverManager.getConnection(
-                    URL_PREFIX + dbFile.toAbsolutePath() + ";MODE=PostgreSQL", "sa", "");
+                    URL_PREFIX + dbFile.toAbsolutePath() + ";MODE=Regular", "sa", "");
         } catch (SQLException e) {
             throw new IllegalStateException(
                     "could not open the ledger database at " + dbFile
@@ -90,20 +90,22 @@ public final class SqlLedgerStore implements LedgerStore, AutoCloseable {
             // Stable field lookup
             List<SqlCandidate> candidates = new ArrayList<>();
             try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT id, merchant, source_message_ids FROM ledger "
-                            + "WHERE account_last4 = ? AND occurred_at = ? AND direction = ? AND amount = ? "
+                    "SELECT id, occurred_at, merchant, source_message_ids FROM ledger "
+                            + "WHERE account_last4 = ? AND direction = ? AND amount = ? "
                             + "ORDER BY id ASC")) {
                 ps.setString(1, t.accountLast4());
-                ps.setString(2, t.occurredAt().toString());
-                ps.setString(3, t.direction().name());
-                ps.setBigDecimal(4, t.amount());
+                ps.setString(2, t.direction().name());
+                ps.setBigDecimal(3, t.amount());
 
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         long id = rs.getLong(1);
-                        String rawMerchant = rs.getString(2);
-                        String sourceIds = rs.getString(3);
-                        candidates.add(new SqlCandidate(id, rawMerchant, sourceIds));
+                        String occurredAtStr = rs.getString(2);
+                        String rawMerchant = rs.getString(3);
+                        String sourceIds = rs.getString(4);
+                        if (OffsetDateTime.parse(occurredAtStr).toInstant().equals(t.occurredAt().toInstant())) {
+                            candidates.add(new SqlCandidate(id, occurredAtStr, rawMerchant, sourceIds));
+                        }
                     }
                 }
             }
@@ -190,7 +192,7 @@ public final class SqlLedgerStore implements LedgerStore, AutoCloseable {
         }
     }
 
-    private record SqlCandidate(long id, String rawMerchant, String sourceIds) {}
+    private record SqlCandidate(long id, String occurredAtStr, String rawMerchant, String sourceIds) {}
 
     @Override
     public List<NormalizedTxn> all() {

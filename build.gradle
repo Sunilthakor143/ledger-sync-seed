@@ -13,13 +13,12 @@ java {
 repositories { mavenCentral() }
 
 dependencies {
-    // The main source set compiles against the JDK alone. The H2 driver is
-    // loaded reflectively by java.sql.DriverManager at run time, so it is a
-    // runtime dependency only. Add whatever you need for your document store.
+    implementation 'org.mongodb:mongodb-driver-sync:5.0.1'
     runtimeOnly 'com.h2database:h2:2.2.224'
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.testcontainers:mongodb:1.19.7'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
@@ -29,6 +28,24 @@ application {
 
 test {
     useJUnitPlatform()
+    exclude '**/mongo/**'
+    testLogging {
+        events "passed", "skipped", "failed", "standardOut", "standardError"
+        showStandardStreams = true
+    }
+}
+
+tasks.register('mongoTest', Test) {
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    include '**/mongo/**'
+    environment "DOCKER_HOST", "npipe:////./pipe/docker_engine"
+    environment "TESTCONTAINERS_CHECKS_DISABLE", "true"
+    environment "TESTCONTAINERS_RYUK_DISABLED", "true"
+    systemProperty "testcontainers.checks.disable", "true"
+    systemProperty "testcontainers.ryuk.disabled", "true"
     testLogging {
         events "passed", "skipped", "failed", "standardOut", "standardError"
         showStandardStreams = true

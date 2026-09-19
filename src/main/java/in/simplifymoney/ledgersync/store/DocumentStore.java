@@ -33,4 +33,16 @@ public interface DocumentStore {
     Optional<NormalizedTxn> byMessageId(String messageId);
 
     void save(NormalizedTxn txn);
+
+    /** Saves a batch of transactions into the document store using bulk operation. */
+    void saveBatch(List<NormalizedTxn> transactions);
+
+    /** Reads all canonical transactions currently stored in the document store. */
+    List<NormalizedTxn> all();
+
+    /** Reads all stored documents exposing raw storageId (_id) and canonicalId for verification. */
+    List<StoredDocument> allStored();
+
+    /** Returns total document count in the collection. */
+    long count();
 }

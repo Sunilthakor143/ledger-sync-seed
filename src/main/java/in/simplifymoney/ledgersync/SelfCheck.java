@@ -45,8 +45,10 @@ public final class SelfCheck {
         Map<String, Object> accounts = (Map<String, Object>) want.get("accounts");
 
         System.out.println("\nAGAINST fixtures/corpus-a-totals.json");
-        System.out.printf("  transactions   expected %s, produced %d%n",
-                want.get("transactions_expected"), ledger.size());
+        Object wantExpected = want.get("transactions_expected");
+        long unobservedDiff = (wantExpected instanceof Number n ? n.longValue() : Long.parseLong(wantExpected.toString())) - ledger.size();
+        System.out.printf("  transactions   expected (checkpoint) %s, produced (evidence-backed) %d (diff: %d unobserved)%n",
+                wantExpected, ledger.size(), unobservedDiff);
 
         for (Map.Entry<String, Object> e : accounts.entrySet()) {
             @SuppressWarnings("unchecked")
@@ -64,11 +66,13 @@ public final class SelfCheck {
                     case CREDIT -> running.add(t.amount());
                 };
             }
+            BigDecimal diff = running.subtract(closing);
+            String note = diff.compareTo(BigDecimal.ZERO) != 0 ? " (unresolved reconciliation gap)" : "";
             System.out.printf("  **%s  txns %d (expected %s)%n",
                     e.getKey(), n, a.get("transactions_expected"));
-            System.out.printf("           balance from ledger %s, bank says %s, difference %s%n",
+            System.out.printf("           balance from ledger %s, bank says %s, difference %s%s%n",
                     running.toPlainString(), closing.toPlainString(),
-                    running.subtract(closing).toPlainString());
+                    diff.toPlainString(), note);
         }
         System.out.println("\nThis is the starting point, not the finish line.");
     }

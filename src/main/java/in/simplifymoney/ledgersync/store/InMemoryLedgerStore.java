@@ -24,7 +24,7 @@ public final class InMemoryLedgerStore implements LedgerStore {
         for (int i = 0; i < rows.size(); i++) {
             NormalizedTxn r = rows.get(i);
             if (r.accountLast4().equals(txn.accountLast4())
-                    && r.occurredAt().equals(txn.occurredAt())
+                    && r.occurredAt().toInstant().equals(txn.occurredAt().toInstant())
                     && r.direction() == txn.direction()
                     && r.amount().compareTo(txn.amount()) == 0) {
 

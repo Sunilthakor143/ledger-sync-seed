@@ -40,10 +40,10 @@ public class IdempotentIngestTest {
         System.err.println("IngestStats: " + stats + ", storeCount=" + store.count());
         System.err.println("AccountCounts: " + accountCounts);
         assertEquals(522, stats.messagesRead());
-        assertEquals(257, stats.transactionsWritten());
+        assertEquals(256, stats.transactionsWritten());
         assertEquals(43, stats.messagesSkipped());
-        assertEquals(257, store.count());
-        assertEquals(146L, accountCounts.get("4821"));
+        assertEquals(256, store.count());
+        assertEquals(145L, accountCounts.get("4821"));
         assertEquals(91L, accountCounts.get("9075"));
         assertEquals(20L, accountCounts.get("3310"));
     }
@@ -55,11 +55,11 @@ public class IdempotentIngestTest {
 
         ingest.ingestFile(corpusPath);
         List<NormalizedTxn> firstPass = new ArrayList<>(store.all());
-        assertEquals(257, firstPass.size());
+        assertEquals(256, firstPass.size());
 
         ingest.ingestFile(corpusPath);
         List<NormalizedTxn> secondPass = new ArrayList<>(store.all());
-        assertEquals(257, secondPass.size(), "Second ingestion must not add duplicate canonical transactions");
+        assertEquals(256, secondPass.size(), "Second ingestion must not add duplicate canonical transactions");
 
         for (int i = 0; i < firstPass.size(); i++) {
             NormalizedTxn t1 = firstPass.get(i);

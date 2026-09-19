@@ -83,4 +83,55 @@ public class CanonicalizerTest {
         assertEquals(3, txns.size());
         assertEquals(1, txns.stream().filter(t -> t.sourceMessageIds().contains("m-blank")).count());
     }
+
+    @Test
+    void testUtcEmailAndIstSmsSameInstant_producesSingleCanonicalTxn() {
+        ParsedTxn emailUtc = new ParsedTxn("4821", OffsetDateTime.parse("2026-07-18T18:50:00Z"), Direction.DEBIT, new BigDecimal("412.67"), "UBER INDIA", null, "m-00131", null);
+        ParsedTxn smsIst = new ParsedTxn("4821", OffsetDateTime.parse("2026-07-19T00:20:00+05:30"), Direction.DEBIT, new BigDecimal("412.67"), "UBER INDIA", null, "m-00130", null);
+
+        List<NormalizedTxn> txns = canonicalizer.canonicalize(List.of(emailUtc, smsIst));
+        assertEquals(1, txns.size());
+        assertEquals(List.of("m-00130", "m-00131"), txns.get(0).sourceMessageIds());
+        assertEquals(OffsetDateTime.parse("2026-07-18T18:50:00Z"), txns.get(0).occurredAt());
+    }
+
+    @Test
+    void testReversedEvidenceOrder_producesIdenticalCanonicalResult() {
+        ParsedTxn emailUtc = new ParsedTxn("4821", OffsetDateTime.parse("2026-07-18T18:50:00Z"), Direction.DEBIT, new BigDecimal("412.67"), "Uber India", null, "m-00131", null);
+        ParsedTxn smsIst = new ParsedTxn("4821", OffsetDateTime.parse("2026-07-19T00:20:00+05:30"), Direction.DEBIT, new BigDecimal("412.67"), "UBER INDIA", null, "m-00130", null);
+
+        List<NormalizedTxn> order1 = canonicalizer.canonicalize(List.of(emailUtc, smsIst));
+        List<NormalizedTxn> order2 = canonicalizer.canonicalize(List.of(smsIst, emailUtc));
+
+        assertEquals(1, order1.size());
+        assertEquals(1, order2.size());
+        assertEquals(order1.get(0), order2.get(0));
+        assertEquals(
+                in.simplifymoney.ledgersync.canonical.CanonicalIdGenerator.generateId(order1.get(0)),
+                in.simplifymoney.ledgersync.canonical.CanonicalIdGenerator.generateId(order2.get(0))
+        );
+    }
+
+    @Test
+    void testDuplicateReuploadPlusTimezoneVariant_unionsSourceMessageIds() {
+        ParsedTxn sms1 = new ParsedTxn("4821", OffsetDateTime.parse("2026-07-19T00:20:00+05:30"), Direction.DEBIT, new BigDecimal("412.67"), "UBER INDIA", null, "m-00130", null);
+        ParsedTxn sms2Dup = new ParsedTxn("4821", OffsetDateTime.parse("2026-07-19T00:20:00+05:30"), Direction.DEBIT, new BigDecimal("412.67"), "UBER INDIA", null, "m-00356", null);
+        ParsedTxn emailUtc = new ParsedTxn("4821", OffsetDateTime.parse("2026-07-18T18:50:00Z"), Direction.DEBIT, new BigDecimal("412.67"), "UBER INDIA", null, "m-00131", null);
+
+        List<NormalizedTxn> txns = canonicalizer.canonicalize(List.of(sms1, sms2Dup, emailUtc));
+        assertEquals(1, txns.size());
+        assertEquals(List.of("m-00130", "m-00131", "m-00356"), txns.get(0).sourceMessageIds());
+    }
+
+    @Test
+    void testSameInstantDifferentMerchants_remainsSeparate() {
+        OffsetDateTime tUtc = OffsetDateTime.parse("2026-07-18T18:50:00Z");
+        OffsetDateTime tIst = OffsetDateTime.parse("2026-07-19T00:20:00+05:30");
+
+        ParsedTxn t1 = new ParsedTxn("4821", tUtc, Direction.DEBIT, new BigDecimal("412.67"), "SWIGGY", null, "m-1", null);
+        ParsedTxn t2 = new ParsedTxn("4821", tIst, Direction.DEBIT, new BigDecimal("412.67"), "ZOMATO", null, "m-2", null);
+
+        List<NormalizedTxn> txns = canonicalizer.canonicalize(List.of(t1, t2));
+        assertEquals(2, txns.size());
+    }
 }

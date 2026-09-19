@@ -42,4 +42,9 @@ public final class CanonicalIdGenerator {
             throw new IllegalStateException("SHA-256 algorithm missing", e);
         }
     }
+
+    public static String generateId(in.simplifymoney.ledgersync.model.NormalizedTxn txn) {
+        if (txn == null) return null;
+        return generateId(txn.accountLast4(), txn.occurredAt(), txn.direction(), txn.amount(), txn.merchant());
+    }
 }
