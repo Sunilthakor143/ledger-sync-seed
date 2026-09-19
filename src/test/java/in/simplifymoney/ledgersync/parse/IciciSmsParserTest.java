@@ -102,11 +102,27 @@ class IciciSmsParserTest {
     }
 
     @Test
-    void rejectsUpiMandateVerification() {
+    void parsesUpiMandateVerifyTransaction() {
         RawMessage msg = new RawMessage("m182", "sms", "VM-ICICIB-T", OffsetDateTime.now(), "dev1",
                 "ICICI Bank Acct XX9075 Dr INR 0.50 on 26-Jul-2026 10:05; UPI MANDATE VERIFY ref no 349951753536. BalAvl Rs 52,005.13");
 
         Optional<ParsedTxn> parsed = parser.parse(msg);
-        assertFalse(parsed.isPresent(), "UPI MANDATE VERIFY must be rejected as a non-transaction");
+        assertTrue(parsed.isPresent(), "Legitimate transaction message with merchant UPI MANDATE VERIFY must parse successfully");
+        ParsedTxn t = parsed.get();
+        assertEquals("9075", t.accountLast4());
+        assertEquals(Direction.DEBIT, t.direction());
+        assertEquals(new BigDecimal("0.50"), t.amount());
+        assertEquals("UPI MANDATE VERIFY", t.merchant());
+        assertEquals("349951753536", t.reference());
+        assertEquals(new BigDecimal("52005.13"), t.statedBalance());
+    }
+
+    @Test
+    void rejectsNonTransactionMandateVerificationMessage() {
+        RawMessage msg = new RawMessage("m-non-txn", "sms", "VM-ICICIB-T", OffsetDateTime.now(), "dev1",
+                "Mandate verification alert: Please click link to verify UPI mandate.");
+
+        Optional<ParsedTxn> parsed = parser.parse(msg);
+        assertFalse(parsed.isPresent(), "Non-transaction mandate verification lacking transaction structure must be rejected");
     }
 }

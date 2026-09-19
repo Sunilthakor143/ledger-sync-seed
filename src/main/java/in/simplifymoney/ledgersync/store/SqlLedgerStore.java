@@ -1,5 +1,6 @@
 package in.simplifymoney.ledgersync.store;
 
+import in.simplifymoney.ledgersync.canonical.MerchantNormalizer;
 import in.simplifymoney.ledgersync.model.Category;
 import in.simplifymoney.ledgersync.model.Direction;
 import in.simplifymoney.ledgersync.model.NormalizedTxn;
@@ -15,7 +16,11 @@ import java.sql.Statement;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The store this service has used since it was written: a single relational
@@ -78,22 +83,114 @@ public final class SqlLedgerStore implements LedgerStore, AutoCloseable {
 
     @Override
     public void save(NormalizedTxn t) {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO ledger(account_last4, occurred_at, direction, amount,"
-                        + " category, merchant, source_message_ids)"
-                        + " VALUES (?,?,?,?,?,?,?)")) {
-            ps.setString(1, t.accountLast4());
-            ps.setString(2, t.occurredAt().toString());
-            ps.setString(3, t.direction().name());
-            ps.setBigDecimal(4, t.amount());
-            ps.setString(5, t.category().name());
-            ps.setString(6, t.merchant());
-            ps.setString(7, String.join(",", t.sourceMessageIds()));
-            ps.executeUpdate();
+        if (t == null) return;
+        String incomingNorm = MerchantNormalizer.normalize(t.merchant());
+
+        try {
+            // Stable field lookup
+            List<SqlCandidate> candidates = new ArrayList<>();
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT id, merchant, source_message_ids FROM ledger "
+                            + "WHERE account_last4 = ? AND occurred_at = ? AND direction = ? AND amount = ? "
+                            + "ORDER BY id ASC")) {
+                ps.setString(1, t.accountLast4());
+                ps.setString(2, t.occurredAt().toString());
+                ps.setString(3, t.direction().name());
+                ps.setBigDecimal(4, t.amount());
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        long id = rs.getLong(1);
+                        String rawMerchant = rs.getString(2);
+                        String sourceIds = rs.getString(3);
+                        candidates.add(new SqlCandidate(id, rawMerchant, sourceIds));
+                    }
+                }
+            }
+
+            // Find matching candidate rows based on merchant rules
+            List<SqlCandidate> matchingCandidates = new ArrayList<>();
+            boolean isEnrichment = false;
+
+            for (SqlCandidate c : candidates) {
+                String existingNorm = MerchantNormalizer.normalize(c.rawMerchant);
+                if (existingNorm.equals(incomingNorm)) {
+                    matchingCandidates.add(c);
+                } else if (existingNorm.isEmpty() && !incomingNorm.isEmpty()) {
+                    matchingCandidates.add(c);
+                    isEnrichment = true;
+                } else if (!existingNorm.isEmpty() && incomingNorm.isEmpty()) {
+                    matchingCandidates.add(c);
+                }
+            }
+
+            if (!matchingCandidates.isEmpty()) {
+                // Lowest ID is the survivor
+                matchingCandidates.sort(Comparator.comparingLong(c -> c.id));
+                SqlCandidate survivor = matchingCandidates.get(0);
+
+                Set<String> mergedIds = new HashSet<>();
+                for (SqlCandidate c : matchingCandidates) {
+                    if (c.sourceIds != null && !c.sourceIds.isBlank()) {
+                        mergedIds.addAll(Arrays.stream(c.sourceIds.split(","))
+                                .filter(s -> !s.isBlank())
+                                .toList());
+                    }
+                }
+                mergedIds.addAll(t.sourceMessageIds());
+
+                List<String> sortedIds = new ArrayList<>(mergedIds);
+                Collections.sort(sortedIds);
+                String joinedIds = String.join(",", sortedIds);
+
+                String finalMerchant = survivor.rawMerchant;
+                if (isEnrichment && (finalMerchant == null || finalMerchant.isBlank())) {
+                    finalMerchant = t.merchant();
+                }
+
+                // Update survivor
+                try (PreparedStatement up = conn.prepareStatement(
+                        "UPDATE ledger SET merchant = ?, source_message_ids = ? WHERE id = ?")) {
+                    up.setString(1, finalMerchant);
+                    up.setString(2, joinedIds);
+                    up.setLong(3, survivor.id);
+                    up.executeUpdate();
+                }
+
+                // Delete redundant matching candidates
+                for (int i = 1; i < matchingCandidates.size(); i++) {
+                    try (PreparedStatement del = conn.prepareStatement("DELETE FROM ledger WHERE id = ?")) {
+                        del.setLong(1, matchingCandidates.get(i).id);
+                        del.executeUpdate();
+                    }
+                }
+            } else {
+                // Insert new transaction
+                Set<String> uniqueIds = new HashSet<>(t.sourceMessageIds());
+                List<String> sortedIds = new ArrayList<>(uniqueIds);
+                Collections.sort(sortedIds);
+                String joinedIds = String.join(",", sortedIds);
+
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT INTO ledger(account_last4, occurred_at, direction, amount,"
+                                + " category, merchant, source_message_ids)"
+                                + " VALUES (?,?,?,?,?,?,?)")) {
+                    ps.setString(1, t.accountLast4());
+                    ps.setString(2, t.occurredAt().toString());
+                    ps.setString(3, t.direction().name());
+                    ps.setBigDecimal(4, t.amount());
+                    ps.setString(5, t.category().name());
+                    ps.setString(6, t.merchant());
+                    ps.setString(7, joinedIds);
+                    ps.executeUpdate();
+                }
+            }
         } catch (SQLException e) {
-            throw new IllegalStateException("could not save " + t, e);
+            throw new IllegalStateException("could not save transaction " + t, e);
         }
     }
+
+    private record SqlCandidate(long id, String rawMerchant, String sourceIds) {}
 
     @Override
     public List<NormalizedTxn> all() {

@@ -40,9 +40,8 @@ public final class IciciSmsParser implements MessageParser {
         if (m == null || m.body() == null) return Optional.empty();
         String body = m.body();
 
-        // Reject non-transactions (UPI mandate verification, OTPs, phishing/suspension alerts)
-        if (body.contains("UPI MANDATE VERIFY") || body.contains("is your OTP")
-                || body.contains("suspended") || body.contains("Verify PAN")) {
+        // Reject non-transactions (OTPs, phishing/suspension alerts)
+        if (body.contains("is your OTP") || body.contains("suspended") || body.contains("Verify PAN")) {
             return Optional.empty();
         }
 

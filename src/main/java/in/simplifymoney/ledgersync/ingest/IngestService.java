@@ -1,5 +1,6 @@
 package in.simplifymoney.ledgersync.ingest;
 
+import in.simplifymoney.ledgersync.canonical.Canonicalizer;
 import in.simplifymoney.ledgersync.json.Json;
 import in.simplifymoney.ledgersync.model.Category;
 import in.simplifymoney.ledgersync.model.Direction;
@@ -37,7 +38,7 @@ public final class IngestService {
 
     public Stats ingestFile(Path corpus) throws IOException {
         List<RawMessage> messages = readCorpus(corpus);
-        int parsed = 0;
+        List<ParsedTxn> evidenceList = new ArrayList<>();
         int skipped = 0;
         for (RawMessage m : messages) {
             Optional<ParsedTxn> p = parsers.parse(m);
@@ -45,10 +46,16 @@ public final class IngestService {
                 skipped++;
                 continue;
             }
-            store.save(toTransaction(p.get()));
-            parsed++;
+            evidenceList.add(p.get());
         }
-        return new Stats(messages.size(), parsed, skipped);
+
+        Canonicalizer canonicalizer = new Canonicalizer();
+        List<NormalizedTxn> canonicalTxns = canonicalizer.canonicalize(evidenceList);
+        for (NormalizedTxn t : canonicalTxns) {
+            store.save(t);
+        }
+
+        return new Stats(messages.size(), canonicalTxns.size(), skipped);
     }
 
     public static List<RawMessage> readCorpus(Path corpus) throws IOException {
